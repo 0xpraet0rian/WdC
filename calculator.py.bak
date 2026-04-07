@@ -1,0 +1,362 @@
+
+from qgis.core import QgsProject, QgsDistanceArea, QgsWkbTypes, QgsPointXY
+from .ui.traveler_defaults import TRAVELER_DEFAULTS
+
+class HistoricalTravelCalculator:
+    def __init__(self):
+        self.HORSEBACK_GAITS = {
+            'Walk':    {'speed': 7.0,  'fatigue': 0.012, 'recovery': 0.15},  # km/h
+            'Trot':    {'speed': 10.0, 'fatigue': 0.025, 'recovery': 0.12},
+            'Gallop':  {'speed': 25.0, 'fatigue': 0.05,  'recovery': 0.10}
+        }
+        # Ottoman/Medieval BASE_SPEEDS (km/day)
+        self.BASE_SPEEDS = {
+            'foot': {
+                'pedestrian': 25,
+                'child': 12,
+                'elderly': 12,
+                'merchant': 30,
+                'soldier': 30,
+                'janissary': 35,
+                'sipahi': 50
+            },
+            'cart': {
+                'merchant_cart': 20,
+                'supply_cart': 18,
+                'artillery': 12,
+                'ottoman_supply': 15,
+                'ottoman_artillery': 12
+            }
+        }
+        # Ottoman/Medieval AVERAGE_SPEEDS (km/h)
+        self.AVERAGE_SPEEDS = {
+            'foot': {
+                'pedestrian': 4.5,
+                'child': 3.5,
+                'elderly': 3.0,
+                'merchant': 4.5,
+                'soldier': 5.0,
+                'janissary': 5.5,
+                'sipahi': 7.0
+            },
+            'cart': {
+                'merchant_cart': 3.5,
+                'supply_cart': 3.5,
+                'artillery': 2.5,
+                'ottoman_supply': 2.5,
+                'ottoman_artillery': 2.5
+            }
+        }
+        self.FATIGUE_RATES = {
+            'foot': {
+                'pedestrian': 0.02,
+                'child': 0.03,
+                'elderly': 0.025,
+                'merchant': 0.018,
+                'soldier': 0.012,
+                'janissary': 0.01,
+                'sipahi': 0.012
+            },
+            'cart': {
+                'merchant_cart': 0.015,
+                'supply_cart': 0.015,
+                'artillery': 0.012,
+                'ottoman_supply': 0.015,
+                'ottoman_artillery': 0.012
+            }
+        }
+        self.RECOVERY_RATES = {
+            'foot': {
+                'pedestrian': 0.25,
+                'child': 0.35,
+                'elderly': 0.3,
+                'merchant': 0.2,
+                'soldier': 0.15,
+                'janissary': 0.12,
+                'sipahi': 0.15
+            },
+            'cart': {
+                'merchant_cart': 0.15,
+                'supply_cart': 0.15,
+                'artillery': 0.15,
+                'ottoman_supply': 0.15,
+                'ottoman_artillery': 0.15
+            }
+        }
+        self.TERRAIN_MODIFIERS = {
+            'paved': 0.9,
+            'dirt': 0.7,
+            'grass': 0.6,
+            'forest': 0.4,
+            'marsh': 0.3,
+            'mountain': 0.35,
+            'desert': 0.5
+        }
+        self.SEASON_MODIFIERS = {
+            'summer': 1.0,
+            'winter': 0.5,
+            'spring': 0.7,
+            'fall': 0.8
+        }
+        self.MIN_DAILY_DISTANCE_KM = 0.1
+        self.MAX_TOTAL_DAYS = 3650
+        self.FATIGUE_REST_THRESHOLD = 0.8
+        self.CART_TYPES = [
+            'merchant_cart', 'supply_cart', 'artillery', 'ottoman_supply', 'ottoman_artillery'
+        ]
+        self.CAVALRY_TYPES = ['cavalry', 'sipahi']
+        self.SUPPLY_WEIGHT_EFFECT = 0.01
+        self.SUPPLY_WEIGHT_EFFECT_QUAD = 0.0002
+
+    def _get_traveler_defaults(self, traveler_type):
+        defaults = {
+            'custom_foot_speed_kmh': 4.5,
+            'custom_foot_fatigue': 0.018,
+            'custom_foot_recovery': 0.2,
+            'custom_horse_walk_speed_kmh': 7.0,
+            'custom_horse_trot_speed_kmh': 10.0,
+            'custom_horse_gallop_speed_kmh': 25.0,
+            'custom_horse_fatigue': 0.012,
+            'custom_horse_recovery': 0.15
+        }
+        defaults.update(TRAVELER_DEFAULTS.get(traveler_type, {}))
+        return defaults
+
+    def _get_base_speed_kmh(self, traveler_type, traveler_class, horseback, horseback_gait, custom):
+        # Always return km/h for the traveler, using custom profile if set
+        if traveler_class == 'horse':
+            if horseback_gait == 'Walk':
+                return custom.get('custom_horse_walk_speed_kmh', self.HORSEBACK_GAITS['Walk']['speed'])
+            elif horseback_gait == 'Trot':
+                return custom.get('custom_horse_trot_speed_kmh', self.HORSEBACK_GAITS['Trot']['speed'])
+            elif horseback_gait == 'Gallop':
+                return custom.get('custom_horse_gallop_speed_kmh', self.HORSEBACK_GAITS['Gallop']['speed'])
+            else:
+                return custom.get('custom_horse_walk_speed_kmh', self.HORSEBACK_GAITS['Walk']['speed'])
+        elif traveler_class == 'cart':
+            return custom.get('custom_cart_speed_kmh', self.AVERAGE_SPEEDS['cart'].get(traveler_type, 3.5))
+        else:
+            return custom.get('custom_foot_speed_kmh', self.AVERAGE_SPEEDS['foot'].get(traveler_type, 4.5))
+
+    def calculate_journey(self, points, traveler_type, params):
+        d = QgsDistanceArea()
+        d.setEllipsoid('WGS84')
+        d.setSourceCrs(QgsProject.instance().crs(), QgsProject.instance().transformContext())
+
+        segment_distances = []
+        for p1, p2 in zip(points, points[1:]):
+            segment_distances.append(d.measureLine(p1, p2) / 1000.0)  # in km
+
+        horseback = params.get('horseback', False)
+        horseback_gait = params.get('horseback_gait', 'Walk')
+        if traveler_type in self.CART_TYPES:
+            horseback = False
+        if traveler_type in self.CAVALRY_TYPES:
+            horseback = True
+
+        traveler_class = self._get_traveler_class(traveler_type, horseback)
+        custom = {}
+        if params.get('custom_profile', False):
+            custom = self._get_traveler_defaults(traveler_type)
+            for k in params:
+                if k.startswith('custom_'):
+                    custom[k] = params[k]
+
+        base_speed_kmh = self._get_base_speed_kmh(traveler_type, traveler_class, horseback, horseback_gait, custom)
+        fatigue_rate = self._get_fatigue_rate(traveler_type, traveler_class, horseback, horseback_gait, custom)
+        recovery_rate = self._get_recovery_rate(traveler_type, traveler_class, horseback, horseback_gait, custom)
+        base_speed_kmh *= self.SEASON_MODIFIERS.get(params.get('season', 'summer'), 1.0)
+
+        if params.get('with_supply', False):
+            supply_weight = params.get('supply_weight_kg', 20)
+            penalty = self.SUPPLY_WEIGHT_EFFECT * supply_weight + self.SUPPLY_WEIGHT_EFFECT_QUAD * (supply_weight ** 2)
+            base_speed_kmh *= max(0.05, 1.0 - penalty)
+            fatigue_rate *= 1.0 + (self.SUPPLY_WEIGHT_EFFECT * supply_weight * 2.0) + (self.SUPPLY_WEIGHT_EFFECT_QUAD * (supply_weight ** 2))
+
+        terrain_type = params.get('surface_type', 'dirt')
+        height = params.get('height', 170)
+        try:
+            height = float(height)
+        except Exception:
+            height = 170
+        height_factor = height / 170.0
+        base_speed_kmh *= height_factor
+
+        hours_per_day = params.get('hours_per_day', 8)
+        try:
+            hours_per_day = float(hours_per_day)
+            if hours_per_day <= 0:
+                hours_per_day = 8
+        except Exception:
+            hours_per_day = 8
+
+        march_type = params.get('march_type', 'normal')
+        if march_type == 'forced':
+            max_travel_days = 8
+            rest_duration = 1.0
+        else:
+            max_travel_days = 6
+            rest_duration = 2.0
+
+        fatigue = 0.0
+        total_days = 0.0
+        total_travel_days = 0.0
+        total_rest_days = 0.0
+        total_distance_km = sum(segment_distances)
+        travel_day_streak = 0
+
+        segment_summaries = []
+        travel_log = []
+
+        for seg_idx, segment_length in enumerate(segment_distances):
+            segment_remaining = segment_length
+            segment_travel_days = 0.0
+            segment_rest_days = 0.0
+            segment_time = 0.0
+            segment_fatigue = fatigue
+            segment_travel_streak = travel_day_streak
+
+            while segment_remaining > 1e-6:
+                if total_days > self.MAX_TOTAL_DAYS:
+                    raise RuntimeError(
+                        f"Journey exceeds {self.MAX_TOTAL_DAYS} days. "
+                        "This likely means the modifiers (fatigue, terrain, supply, season) are too harsh, "
+                        "or the route is too long for this traveler type."
+                    )
+
+                # Calculate actual speed after all modifiers (always km/h)
+                terrain_mod = self.TERRAIN_MODIFIERS.get(terrain_type, 0.6)
+                fatigue_mod = 1 - (segment_fatigue * 0.4)
+                actual_speed_kmh = base_speed_kmh * terrain_mod * fatigue_mod
+                daily_distance = actual_speed_kmh * hours_per_day
+                km_per_hour = actual_speed_kmh
+
+                if daily_distance < self.MIN_DAILY_DISTANCE_KM:
+                    raise RuntimeError(
+                        f"Calculated daily distance ({daily_distance:.3f} km) is too small. "
+                        "Journey cannot proceed. Check if terrain, fatigue, supply, or season modifiers are too harsh."
+                    )
+
+                if segment_fatigue >= self.FATIGUE_REST_THRESHOLD or segment_travel_streak >= max_travel_days:
+                    segment_fatigue = max(0, segment_fatigue - (recovery_rate * rest_duration))
+                    total_days += rest_duration
+                    total_rest_days += rest_duration
+                    segment_rest_days += rest_duration
+                    segment_time += rest_duration * hours_per_day
+                    segment_travel_streak = 0
+                    travel_log.append({
+                        'type': 'rest',
+                        'days': rest_duration,
+                        'fatigue': segment_fatigue,
+                        'distance': 0,
+                        'segment': seg_idx + 1
+                    })
+                    continue
+
+                if segment_remaining < daily_distance:
+                    fraction = segment_remaining / daily_distance
+                    segment_fatigue = min(1.0, segment_fatigue + (fraction * fatigue_rate))
+                    total_days += fraction
+                    total_travel_days += fraction
+                    segment_travel_days += fraction
+                    segment_time += fraction * hours_per_day
+                    travel_log.append({
+                        'type': 'travel',
+                        'distance': segment_remaining,
+                        'speed': actual_speed_kmh,
+                        'speed_km_per_day': daily_distance,
+                        'speed_km_per_hour': actual_speed_kmh,
+                        'fatigue': segment_fatigue,
+                        'terrain': terrain_type,
+                        'segment': seg_idx + 1,
+                        'fraction_of_day': fraction,
+                        'time_hours': segment_remaining / actual_speed_kmh if actual_speed_kmh > 0 else 0
+                    })
+                    segment_remaining = 0
+                    segment_travel_streak += fraction
+                    break
+
+                segment_remaining -= daily_distance
+                segment_fatigue = min(1.0, segment_fatigue + fatigue_rate)
+                total_days += 1.0
+                total_travel_days += 1.0
+                segment_travel_days += 1.0
+                segment_time += hours_per_day
+                travel_log.append({
+                    'type': 'travel',
+                    'distance': daily_distance,
+                    'speed': actual_speed_kmh,
+                    'speed_km_per_day': daily_distance,
+                    'speed_km_per_hour': actual_speed_kmh,
+                    'fatigue': segment_fatigue,
+                    'terrain': terrain_type,
+                    'segment': seg_idx + 1,
+                    'fraction_of_day': 1.0,
+                    'time_hours': daily_distance / actual_speed_kmh if actual_speed_kmh > 0 else 0
+                })
+                segment_travel_streak += 1.0
+
+            fatigue = segment_fatigue
+            travel_day_streak = segment_travel_streak
+
+            segment_summaries.append({
+                'segment': seg_idx + 1,
+                'distance_km': segment_length,
+                'travel_days': segment_travel_days,
+                'rest_days': segment_rest_days,
+                'total_days': segment_travel_days + segment_rest_days
+            })
+
+        return {
+            'total_days': total_days,
+            'travel_days': total_travel_days,
+            'rest_days': total_rest_days,
+            'segments': travel_log,
+            'fatigue': fatigue,
+            'average_km_day': total_distance_km / total_days if total_days > 0 else 0,
+            'average_km_hour': (total_distance_km / sum([seg['time_hours'] for seg in travel_log if seg['type'] == 'travel'])) if total_days > 0 else 0,
+            'total_distance_km': total_distance_km,
+            'traveler_type': traveler_type,
+            'params': params,
+            'per_segment_summary': segment_summaries,
+            'hours_per_day': hours_per_day
+        }
+
+    def _get_traveler_class(self, traveler_type, horseback):
+        cart_types = ['merchant_cart', 'supply_cart', 'artillery', 'ottoman_supply', 'ottoman_artillery']
+        cavalry_types = ['cavalry', 'sipahi']
+        if traveler_type in cart_types:
+            return 'cart'
+        if horseback or traveler_type in cavalry_types:
+            return 'horse'
+        return 'foot'
+
+    def _get_fatigue_rate(self, traveler_type, traveler_class, horseback, horseback_gait, custom):
+        if traveler_class == 'horse':
+            if horseback_gait == 'Walk':
+                return custom.get('custom_horse_fatigue', self.HORSEBACK_GAITS['Walk']['fatigue'])
+            elif horseback_gait == 'Trot':
+                return custom.get('custom_horse_fatigue', self.HORSEBACK_GAITS['Trot']['fatigue'])
+            elif horseback_gait == 'Gallop':
+                return custom.get('custom_horse_fatigue', self.HORSEBACK_GAITS['Gallop']['fatigue'])
+            else:
+                return custom.get('custom_horse_fatigue', self.HORSEBACK_GAITS['Walk']['fatigue'])
+        elif traveler_class == 'cart':
+            return self.FATIGUE_RATES['cart'].get(traveler_type, 0.015)
+        else:
+            return custom.get('custom_foot_fatigue', self.FATIGUE_RATES['foot'].get(traveler_type, 0.018))
+
+    def _get_recovery_rate(self, traveler_type, traveler_class, horseback, horseback_gait, custom):
+        if traveler_class == 'horse':
+            if horseback_gait == 'Walk':
+                return custom.get('custom_horse_recovery', self.HORSEBACK_GAITS['Walk']['recovery'])
+            elif horseback_gait == 'Trot':
+                return custom.get('custom_horse_recovery', self.HORSEBACK_GAITS['Trot']['recovery'])
+            elif horseback_gait == 'Gallop':
+                return custom.get('custom_horse_recovery', self.HORSEBACK_GAITS['Gallop']['recovery'])
+            else:
+                return custom.get('custom_horse_recovery', self.HORSEBACK_GAITS['Walk']['recovery'])
+        elif traveler_class == 'cart':
+            return self.RECOVERY_RATES['cart'].get(traveler_type, 0.15)
+        else:
+            return custom.get('custom_foot_recovery', self.RECOVERY_RATES['foot'].get(traveler_type, 0.2))

@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/plugins/walk_distance_calculator" >
+    <file>icon.png</file>
+  </qresource>
+</RCC>

@@ -1,0 +1,135 @@
+
+from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtGui import QIcon, QColor
+from qgis.PyQt.QtWidgets import QAction
+from qgis.core import (
+    QgsProject, QgsWkbTypes, QgsPointXY, QgsDistanceArea
+)
+from qgis.gui import QgsMapToolEmitPoint, QgsRubberBand
+import os
+import sys
+
+from .ui.results_dialog import ResultsDialog
+from .ui.path_tracer_dock import PathTracerDock
+from .calculator import HistoricalTravelCalculator
+
+plugin_dir = os.path.dirname(__file__)
+if plugin_dir not in sys.path:
+    sys.path.append(plugin_dir)
+
+class WalkDistanceCalculator:
+    def __init__(self, iface):
+        self.iface = iface
+        self.plugin_dir = os.path.dirname(__file__)
+        self.rubber_band = None
+        self.map_tool = None
+        self.points = []
+        self.dem_layer = None
+        self.dock = None
+        self.calculator = HistoricalTravelCalculator()
+
+    def initGui(self):
+        icon_path = os.path.join(self.plugin_dir, 'icon.png')
+        self.action = QAction(QIcon(icon_path), "Historical Travel Calculator", self.iface.mainWindow())
+        self.action.triggered.connect(self.run)
+        self.iface.addToolBarIcon(self.action)
+        self.iface.addPluginToMenu("&Historical Analysis", self.action)
+
+    def unload(self):
+        self.iface.removeToolBarIcon(self.action)
+        self.iface.removePluginMenu("&Historical Analysis", self.action)
+        if self.dock:
+            self.iface.removeDockWidget(self.dock)
+        self.cleanup_rubber_band()
+
+    def cleanup_rubber_band(self):
+        if self.rubber_band:
+            self.rubber_band.reset()
+            self.iface.mapCanvas().scene().removeItem(self.rubber_band)
+            self.rubber_band = None
+
+    def run(self):
+        if not self.dock:
+            self.dock = PathTracerDock(self.iface, self.iface.mainWindow())
+            self.dock.calculateRequested.connect(self.show_results)
+            self.dock.clearRequested.connect(self.clear_path)
+            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
+        self.dock.show()
+        self.activate_tracing()
+
+    def activate_tracing(self):
+        if not self.map_tool:
+            self.map_tool = QgsMapToolEmitPoint(self.iface.mapCanvas())
+            self.map_tool.canvasClicked.connect(self.handle_map_click)
+        
+        if not self.rubber_band:
+            self.rubber_band = QgsRubberBand(self.iface.mapCanvas(), QgsWkbTypes.LineGeometry)
+            self.rubber_band.setColor(QColor(255, 0, 0))
+            self.rubber_band.setWidth(2)
+        
+        self.iface.mapCanvas().setMapTool(self.map_tool)
+        self.points = []
+        self.update_rubber_band()
+
+    def handle_map_click(self, point, button):
+        self.points.append(QgsPointXY(point))
+        self.update_rubber_band()
+        if self.dock:
+            self.dock.update_point_count(len(self.points))
+
+    def update_rubber_band(self):
+        self.rubber_band.reset(QgsWkbTypes.LineGeometry)
+        for pt in self.points:
+            self.rubber_band.addPoint(pt)
+        self.rubber_band.show()
+
+    def clear_path(self):
+        self.points = []
+        self.update_rubber_band()
+        if self.dock:
+            self.dock.update_point_count(0)
+
+    def show_results(self, params):
+        if len(self.points) < 2:
+            self.iface.messageBar().pushWarning("Warning", "You need at least 2 points to calculate a path")
+            return
+            
+        try:
+            hist = params.get('historical_analysis', {})
+            results = self.calculator.calculate_journey(self.points, params['traveler_type'], {
+                'surface_type': params['surface_type'],
+                'season': hist.get('season', 'summer'),
+                'march_type': hist.get('march_type', 'normal'),
+                'with_supply': hist.get('with_supply', False),
+                'supply_weight_kg': hist.get('supply_weight_kg', params.get('supply_weight_kg', 0)),
+                'historical': True,
+                'height': params.get('height', 170),
+                'hours_per_day': params.get('hours_per_day', 8),
+                'horseback': params.get('horseback', False),
+                'horseback_gait': params.get('horseback_gait', 'Walk'),
+                **{k: v for k, v in params.items() if k.startswith('custom_') or k == 'custom_profile'}
+            })
+        except Exception as e:
+            self.iface.messageBar().pushCritical("Calculation Error", str(e))
+            return
+        
+        if results:
+            days = results['total_days']
+            results['formatted_time'] = f"{days:.2f} days"
+            results['days_required'] = days
+            results['total_distance'] = results['total_distance_km'] * 1000
+            results['daily_march_hours'] = results['hours_per_day']
+            results['average_km_hour'] = results['average_km_hour']
+
+            for i, segment in enumerate(results['segments']):
+                segment['elevation_start'] = 0
+                segment['elevation_end'] = 0
+                segment['slope'] = 0
+                if segment['type'] == 'travel' and segment['speed_km_per_hour'] > 0:
+                    segment['time'] = segment['distance'] / segment['speed_km_per_hour']
+                else:
+                    segment['time'] = 0
+                segment['is_rest_day'] = segment['type'] == 'rest'
+            
+            dialog = ResultsDialog(results, self.iface.mainWindow())
+            dialog.exec_()

@@ -1,0 +1,134 @@
+from qgis.PyQt.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QDialogButtonBox
+from qgis.PyQt.QtGui import QIcon
+
+class HelpDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Walk Distance Calculator Help")
+        self.setMinimumSize(700, 600)
+        layout = QVBoxLayout(self)
+
+        self.text_browser = QTextBrowser(self)
+        self.text_browser.setOpenExternalLinks(True)
+        self.text_browser.setHtml(self._help_html())
+        layout.addWidget(self.text_browser)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.Close)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _help_html(self):
+        return """
+        <h1>Walk Distance Calculator - Help &amp; Explanation</h1>
+        <p>
+            <b>Walk Distance Calculator</b> is a QGIS plugin for simulating historical or custom travel along a path, considering traveler type, terrain, season, fatigue, supply weight, and more.
+        </p>
+        <h2>UI Elements</h2>
+        <ul>
+            <li><b>Traveler Type:</b> Select the type of traveler (pedestrian, cavalry, cart, etc.). This determines base speed, fatigue, and recovery rates.</li>
+            <li><b>Horseback (Mounted):</b> Enable if the traveler is riding a horse. For cavalry, this is always enabled.</li>
+            <li><b>Horseback Gait:</b> Choose between Walk, Trot, or Gallop. Each gait has different speed, fatigue, and recovery rates.</li>
+            <li><b>Customize Profile:</b> Opens a dialog to set custom speeds, fatigue, and recovery rates for foot and horseback travel.</li>
+            <li><b>Height (cm):</b> Traveler's height. Affects speed proportionally (taller = slightly faster).</li>
+            <li><b>Hours per Day:</b> Number of hours traveled per day. Used to convert hourly speeds to daily distances.</li>
+            <li><b>Surface Type:</b> Road/terrain type. Each surface has a modifier affecting speed.</li>
+            <li><b>Enable Historical March Patterns:</b> Enables historical march/rest cycles and supply options.</li>
+            <li><b>March Type:</b> Normal (5 days travel, 2 days rest) or Forced (7 days travel, 1 day rest).</li>
+            <li><b>Season:</b> Summer, Winter, Spring, or Fall. Each season modifies speed.</li>
+            <li><b>With Additional Supplies:</b> If checked, supply weight is considered, reducing speed and increasing fatigue.</li>
+            <li><b>Supply Weight:</b> Weight of carried supplies (kg).</li>
+            <li><b>Clear Route:</b> Clears all points from the map.</li>
+            <li><b>Calculate Historical Journey:</b> Runs the calculation and shows results.</li>
+            <li><b>Help Button:</b> Opens this help dialog.</li>
+        </ul>
+        <h2>Calculation Details</h2>
+        <h3>1. Base Speed</h3>
+        <ul>
+            <li>Each traveler type has a base speed (km/day), fatigue rate, and recovery rate, either from defaults or custom profile.</li>
+            <li>If horseback is enabled, the selected gait (Walk/Trot/Gallop) determines speed and fatigue.</li>
+            <li>Base speed is multiplied by <b>hours per day</b> to get daily distance.</li>
+            <li><b>Height</b> affects speed: <code>speed *= (height / 170)</code></li>
+        </ul>
+        <h3>2. Terrain Modifier</h3>
+        <ul>
+            <li>Each surface type has a modifier:
+                <ul>
+                    <li>Paved: 0.9</li>
+                    <li>Dirt: 0.7</li>
+                    <li>Grass: 0.6</li>
+                    <li>Forest: 0.4</li>
+                    <li>Marsh: 0.3</li>
+                    <li>Mountain: 0.35</li>
+                    <li>Desert: 0.5</li>
+                </ul>
+            </li>
+            <li>Daily distance: <code>base_speed_km_day * terrain_modifier</code></li>
+        </ul>
+        <h3>3. Season Modifier</h3>
+        <ul>
+            <li>Season affects speed:
+                <ul>
+                    <li>Summer: 1.0</li>
+                    <li>Winter: 0.5</li>
+                    <li>Spring: 0.7</li>
+                    <li>Fall: 0.8</li>
+                </ul>
+            </li>
+            <li>Applied to base speed: <code>base_speed_km_day *= season_modifier</code></li>
+        </ul>
+        <h3>4. Supply Weight Penalty</h3>
+        <ul>
+            <li>If carrying supplies, speed is reduced and fatigue increased:
+                <ul>
+                    <li>Speed penalty: <code>speed *= max(0.05, 1 - (0.01 * weight + 0.0002 * weight^2))</code></li>
+                    <li>Fatigue penalty: <code>fatigue_rate *= 1 + (0.02 * weight + 0.0002 * weight^2)</code></li>
+                </ul>
+            </li>
+        </ul>
+        <h3>5. Fatigue and Recovery</h3>
+        <ul>
+            <li>Each travel day increases fatigue by the traveler's fatigue rate.</li>
+            <li>If fatigue exceeds 0.8 or the max travel streak (6 for normal, 8 for forced), the traveler must rest.</li>
+            <li>Rest days reduce fatigue by <code>recovery_rate * rest_days</code>.</li>
+            <li>Fatigue reduces daily distance: <code>daily_distance *= (1 - fatigue * 0.4)</code></li>
+        </ul>
+        <h3>6. March/Rest Cycles</h3>
+        <ul>
+            <li>Normal March: 5 days travel, 2 days rest.</li>
+            <li>Forced March: 7 days travel, 1 day rest.</li>
+            <li>If fatigue threshold is reached before max travel days, rest occurs early.</li>
+        </ul>
+        <h3>7. Segment Calculation</h3>
+        <ul>
+            <li>The route is split into segments between points.</li>
+            <li>Each segment is traversed day by day, updating fatigue, distance, and rest as needed.</li>
+        </ul>
+        <h3>8. Stopping Conditions</h3>
+        <ul>
+            <li>If daily distance drops below 0.1 km, calculation stops (too harsh conditions).</li>
+            <li>If total days exceeds 3650, calculation stops (likely impossible journey).</li>
+        </ul>
+        <h2>Results</h2>
+        <ul>
+            <li><b>Total Days:</b> Total journey time (travel + rest).</li>
+            <li><b>Travel Days:</b> Days spent moving.</li>
+            <li><b>Rest Days:</b> Days spent resting.</li>
+            <li><b>Average km/day:</b> Overall average speed.</li>
+            <li><b>Average km/hour:</b> Average hourly speed.</li>
+            <li><b>Segment Details:</b> Each segment's distance, time, fatigue, and rest.</li>
+        </ul>
+        <h2>Traveler Types &amp; Defaults</h2>
+        <ul>
+            <li>Each traveler type (pedestrian, child, cavalry, cart, etc.) has its own default speeds and fatigue/recovery rates, which can be customized.</li>
+        </ul>
+        <h2>Tips</h2>
+        <ul>
+            <li>Use the "Customize Profile" button to fine-tune speeds and fatigue for unique scenarios.</li>
+            <li>Hover over UI elements for tooltips.</li>
+            <li>If calculation fails, check for extreme supply weights, harsh terrain, or very low speeds.</li>
+        </ul>
+        <hr>
+        <p>
+            For more details, see the plugin documentation or contact the developer.
+        </p>
+        """
