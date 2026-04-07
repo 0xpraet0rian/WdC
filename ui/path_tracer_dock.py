@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from qgis.PyQt.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QLabel, QComboBox, QSpinBox, QCheckBox,
     QGroupBox, QFormLayout, QToolButton, QDialog, QDialogButtonBox, QDoubleSpinBox, QHBoxLayout, QMessageBox, QFileDialog,
@@ -164,12 +165,21 @@ class CustomProfileDialog(QDialog):
             'custom_horse_fatigue': self.horse_fatigue.value(),
             'custom_horse_recovery': self.horse_recovery.value()
         }
+=======
+from qgis.PyQt.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, 
+                                QComboBox, QSpinBox, QCheckBox, QGroupBox, 
+                                QFormLayout, QToolButton)
+from qgis.PyQt.QtCore import pyqtSignal, Qt
+from qgis.PyQt.QtGui import QIcon
+from qgis.gui import QgsDockWidget
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
 
 class PathTracerDock(QgsDockWidget):
     calculateRequested = pyqtSignal(dict)
     clearRequested = pyqtSignal()
     editProfileRequested = pyqtSignal(str)
     
+<<<<<<< HEAD
     CART_TYPES = {
         "Merchant with Cart", "Supply Cart", "Artillery", "Ottoman Supply", "Ottoman Artillery"
     }
@@ -177,11 +187,14 @@ class PathTracerDock(QgsDockWidget):
 
     PROFILE_SETTINGS_KEY = "WalkDistanceCalculator/CustomProfiles"
 
+=======
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
         self.setObjectName("HistoricalTravelCalculatorDock")
         self.setWindowTitle("Historical Travel Calculator")
+<<<<<<< HEAD
         self.custom_profile_params = None
         self.current_traveler_type = "pedestrian"
         self.setup_ui()
@@ -204,6 +217,15 @@ class PathTracerDock(QgsDockWidget):
         layout.addLayout(help_btn_layout)
         # --- End Help Button ---
 
+=======
+        self.setup_ui()
+
+    def setup_ui(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        # Traveler Profile Group
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         traveler_group = QGroupBox("Traveler Profile")
         traveler_layout = QFormLayout()
         
@@ -211,6 +233,7 @@ class PathTracerDock(QgsDockWidget):
         self.traveler_combo.addItems([
             "Pedestrian", "Child", "Elderly", 
             "Merchant", "Merchant with Cart",
+<<<<<<< HEAD
             "Soldier", "Cavalry", "Supply Cart", "Artillery",
             "Ottoman Janissary", "Ottoman Sipahi", "Ottoman Supply", "Ottoman Artillery"
         ])
@@ -258,10 +281,26 @@ class PathTracerDock(QgsDockWidget):
         traveler_layout.addRow("Horseback:", self.horseback_checkbox)
         traveler_layout.addRow(gait_widget)
         traveler_layout.addRow("Customize Profile:", profile_btn_widget)
+=======
+            "Soldier", "Cavalry (Walk)", "Cavalry (Trot)", "Cavalry (Gallop)",
+            "Supply Cart", "Artillery",
+            "Ottoman Janissary", "Ottoman Sipahi (Walk)", "Ottoman Sipahi (Trot)", "Ottoman Sipahi (Gallop)",
+            "Ottoman Supply", "Ottoman Artillery",
+            "Horseback (Walk)", "Horseback (Trot)", "Horseback (Gallop)"
+        ])
+        
+        self.edit_profile_btn = QToolButton()
+        self.edit_profile_btn.setIcon(QIcon(":/images/themes/default/mActionEdit.svg"))
+        self.edit_profile_btn.clicked.connect(self.on_edit_profile)
+        
+        traveler_layout.addRow("Traveler Type:", self.traveler_combo)
+        traveler_layout.addRow("Customize Profile:", self.edit_profile_btn)
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         
         self.height_spin = QSpinBox()
         self.height_spin.setRange(100, 250)
         self.height_spin.setValue(170)
+<<<<<<< HEAD
         self.height_spin.setToolTip("Enter the traveler's height in centimeters.")
         traveler_layout.addRow("Height (cm):", self.height_spin)
 
@@ -274,33 +313,53 @@ class PathTracerDock(QgsDockWidget):
         self.surface_combo = QComboBox()
         self.surface_combo.addItems(["Paved", "Dirt", "Grass", "Forest", "Marsh", "Mountain", "Desert"])
         self.surface_combo.setToolTip("Select the predominant surface type for the route.")
+=======
+        traveler_layout.addRow("Height (cm):", self.height_spin)
+        
+        self.surface_combo = QComboBox()
+        self.surface_combo.addItems(["Paved", "Dirt", "Grass", "Forest", "Marsh", "Mountain", "Desert"])
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         traveler_layout.addRow("Surface Type:", self.surface_combo)
         
         traveler_group.setLayout(traveler_layout)
         layout.addWidget(traveler_group)
 
+<<<<<<< HEAD
+=======
+        # Historical Analysis Group
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         hist_group = QGroupBox("Historical March Parameters")
         hist_layout = QFormLayout()
         
         self.historical_check = QCheckBox("Enable Historical March Patterns")
+<<<<<<< HEAD
         self.historical_check.setToolTip("Enable simulation of historical march/rest patterns (e.g., 5/2 or 7/1).")
+=======
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         self.historical_check.stateChanged.connect(self.toggle_historical_options)
         hist_layout.addRow(self.historical_check)
         
         self.march_combo = QComboBox()
         self.march_combo.addItems(["Normal March (5/2)", "Forced March (7/1)"])
         self.march_combo.setEnabled(False)
+<<<<<<< HEAD
         self.march_combo.setToolTip("Select the historical march/rest pattern.")
+=======
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         hist_layout.addRow("March Type:", self.march_combo)
         
         self.season_combo = QComboBox()
         self.season_combo.addItems(["Summer", "Winter", "Spring", "Fall"])
         self.season_combo.setEnabled(False)
+<<<<<<< HEAD
         self.season_combo.setToolTip("Select the season for the historical march.")
+=======
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         hist_layout.addRow("Season:", self.season_combo)
         
         self.supply_check = QCheckBox("With Additional Supplies")
         self.supply_check.setEnabled(False)
+<<<<<<< HEAD
         self.supply_check.setToolTip("Check if the traveler is carrying additional supplies.")
         self.supply_check.stateChanged.connect(self.on_supply_checked)
         hist_layout.addRow(self.supply_check)
@@ -312,24 +371,37 @@ class PathTracerDock(QgsDockWidget):
         self.supply_weight_spin.setEnabled(False)
         self.supply_weight_spin.setToolTip("Weight of additional supplies in kilograms.")
         hist_layout.addRow("Supply Weight:", self.supply_weight_spin)
+=======
+        hist_layout.addRow(self.supply_check)
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         
         hist_group.setLayout(hist_layout)
         layout.addWidget(hist_group)
 
+<<<<<<< HEAD
         self.status_label = QLabel("Click on map to add route points (minimum 2)")
         self.status_label.setToolTip("Instructions for adding route points on the map.")
         self.point_count_label = QLabel("Points: 0")
         self.point_count_label.setToolTip("Number of route points currently selected.")
+=======
+        # Status and buttons
+        self.status_label = QLabel("Click on map to add route points (minimum 2)")
+        self.point_count_label = QLabel("Points: 0")
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         layout.addWidget(self.status_label)
         layout.addWidget(self.point_count_label)
 
         self.clear_btn = QPushButton("Clear Route")
+<<<<<<< HEAD
         self.clear_btn.setToolTip("Clear all route points and reset the map.")
+=======
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
         self.clear_btn.clicked.connect(self.clear_path)
         layout.addWidget(self.clear_btn)
         
         self.calculate_btn = QPushButton("Calculate Historical Journey")
         self.calculate_btn.setEnabled(False)
+<<<<<<< HEAD
         self.calculate_btn.setToolTip("Calculate the historical journey based on the selected parameters and route.")
         self.calculate_btn.clicked.connect(self.on_calculate)
         layout.addWidget(self.calculate_btn)
@@ -353,16 +425,26 @@ class PathTracerDock(QgsDockWidget):
 
         self.traveler_combo.currentIndexChanged.connect(self.on_traveler_type_changed)
         self.on_traveler_type_changed(self.traveler_combo.currentIndex())
+=======
+        self.calculate_btn.clicked.connect(self.on_calculate)
+        layout.addWidget(self.calculate_btn)
+        
+        widget.setLayout(layout)
+        self.setWidget(widget)
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
 
     def toggle_historical_options(self, state):
         enabled = state == Qt.Checked
         self.march_combo.setEnabled(enabled)
         self.season_combo.setEnabled(enabled)
         self.supply_check.setEnabled(enabled)
+<<<<<<< HEAD
         self.supply_weight_spin.setEnabled(enabled and self.supply_check.isChecked())
 
     def on_supply_checked(self, state):
         self.supply_weight_spin.setEnabled(state == Qt.Checked)
+=======
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
 
     def update_point_count(self, count):
         self.point_count_label.setText(f"Points: {count}")
@@ -371,7 +453,10 @@ class PathTracerDock(QgsDockWidget):
     def clear_path(self):
         self.clearRequested.emit()
         self.update_point_count(0)
+<<<<<<< HEAD
         self.update_summary_panel(None)
+=======
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
 
     def on_edit_profile(self):
         traveler_type_map = {
@@ -381,6 +466,7 @@ class PathTracerDock(QgsDockWidget):
             "Merchant": "merchant",
             "Merchant with Cart": "merchant_cart",
             "Soldier": "soldier",
+<<<<<<< HEAD
             "Cavalry": "cavalry",
             "Supply Cart": "supply_cart",
             "Artillery": "artillery",
@@ -441,6 +527,25 @@ class PathTracerDock(QgsDockWidget):
 
     def show_error_dialog(self, message, title="Input Error"):
         QMessageBox.critical(self, title, message)
+=======
+            "Cavalry (Walk)": "cavalry_walk",
+            "Cavalry (Trot)": "cavalry_trot",
+            "Cavalry (Gallop)": "cavalry_gallop",
+            "Supply Cart": "supply_cart",
+            "Artillery": "artillery",
+            "Ottoman Janissary": "janissary",
+            "Ottoman Sipahi (Walk)": "sipahi_walk",
+            "Ottoman Sipahi (Trot)": "sipahi_trot",
+            "Ottoman Sipahi (Gallop)": "sipahi_gallop",
+            "Ottoman Supply": "ottoman_supply",
+            "Ottoman Artillery": "ottoman_artillery",
+            "Horseback (Walk)": "horse_walk",
+            "Horseback (Trot)": "horse_trot",
+            "Horseback (Gallop)": "horse_gallop"
+        }
+        current_text = self.traveler_combo.currentText()
+        self.editProfileRequested.emit(traveler_type_map[current_text])
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
 
     def on_calculate(self):
         traveler_type_map = {
@@ -450,6 +555,7 @@ class PathTracerDock(QgsDockWidget):
             "Merchant": "merchant",
             "Merchant with Cart": "merchant_cart",
             "Soldier": "soldier",
+<<<<<<< HEAD
             "Cavalry": "cavalry",
             "Supply Cart": "supply_cart",
             "Artillery": "artillery",
@@ -578,3 +684,33 @@ class PathTracerDock(QgsDockWidget):
             f"Rest Points: <b>{stats.get('num_rests', 0)}</b>"
         )
         self.summary_label.setText(html)
+=======
+            "Cavalry (Walk)": "cavalry_walk",
+            "Cavalry (Trot)": "cavalry_trot",
+            "Cavalry (Gallop)": "cavalry_gallop",
+            "Supply Cart": "supply_cart",
+            "Artillery": "artillery",
+            "Ottoman Janissary": "janissary",
+            "Ottoman Sipahi (Walk)": "sipahi_walk",
+            "Ottoman Sipahi (Trot)": "sipahi_trot",
+            "Ottoman Sipahi (Gallop)": "sipahi_gallop",
+            "Ottoman Supply": "ottoman_supply",
+            "Ottoman Artillery": "ottoman_artillery",
+            "Horseback (Walk)": "horse_walk",
+            "Horseback (Trot)": "horse_trot",
+            "Horseback (Gallop)": "horse_gallop"
+        }
+        
+        params = {
+            'traveler_type': traveler_type_map[self.traveler_combo.currentText()],
+            'height': self.height_spin.value(),
+            'surface_type': self.surface_combo.currentText().lower(),
+            'historical_analysis': {
+                'enabled': self.historical_check.isChecked(),
+                'march_type': self.march_combo.currentText().lower().split()[0],
+                'season': self.season_combo.currentText().lower(),
+                'with_supply': self.supply_check.isChecked()
+            }
+        }
+        self.calculateRequested.emit(params)
+>>>>>>> b6f3842c1e58bb1c19a7809f755bdfe08faa3cc4
